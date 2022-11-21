@@ -11,6 +11,7 @@ namespace BHS
 	public class LocalPlayer : NetworkBehaviour
 	{
 		[SerializeField] private Material _playerMaterial = null;
+		[SerializeField] private GameObject _camera = null;
 
         [Header("BehaviourConfig")]
 		[SerializeField] private Color _colorNormal = Color.white;
@@ -27,7 +28,6 @@ namespace BHS
 		private DateTime _hurtUntil = DateTime.MinValue;
 		private DateTime _attackingUntil = DateTime.MinValue;
 		private string playerName = "";
-		private ScoreLabel _scoreLabel = null;
 
 		public bool IsAttacking()
 		{
@@ -39,30 +39,31 @@ namespace BHS
 			return DateTime.Now <= _hurtUntil;
 		}
 
+		[Command]
 		private void OnBeingAttacked()
 		{
 			_hurtUntil = DateTime.Now.AddSeconds(_durationImmunity);
 			SetMaterialColor(_colorImmunity);
 		}
 
+		[Command]
 		private void OnAttacking()
 		{
 			_attackingUntil = DateTime.Now.AddSeconds(_durationAttack);
 			SetMaterialColor(_colorAttack);
 		}
 
+		[Command]
 		private void SetMaterialColor(Color inc)
 		{
 			GetComponentInChildren<MeshRenderer>().material.SetColor("_Color", inc);
 		}
-		
-		private void BumpScore(bool reset = false)
+
+		[Command]
+		private void BumpScore()
 		{
 			_score++;
-			if (reset)
-				_score = 0;
-
-			_scoreLabel.SetScore(_score);
+			Lobby.Instance.RefreshScore(new PlayerInfo(this, _score));
 		}
 
 		#region Behaviour
@@ -86,17 +87,7 @@ namespace BHS
 
 		private void Start()
 		{
-			if (!isLocalPlayer)
-				return;
-
-			_scoreLabel = FindObjectOfType<ScoreLabel>();
-			if (_scoreLabel == null)
-			{
-				Debug.LogWarning("ScoreLabel object is not found on the scene");
-				return;
-			}
-
-			BumpScore(true);
+			_camera.SetActive(isLocalPlayer);
 		}
 
 		private void Update()

@@ -7,13 +7,11 @@ namespace BHS
 		public static void Lock()
 		{
 			Cursor.lockState = CursorLockMode.Locked;
-			Debug.Log("Mouse lock");
 		}
 
 		public static void Unlock()
 		{
 			Cursor.lockState = CursorLockMode.None;
-			Debug.Log("Mouse unlock");
 		}
 
 		public static void Toggle()
