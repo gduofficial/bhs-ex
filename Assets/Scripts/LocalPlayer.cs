@@ -1,54 +1,147 @@
 using UnityEngine;
+using UnityEngine.UI;
 using System;
+//using System.Collections.Generic;
 using Mirror;
 
 namespace BHS
 {
 	[RequireComponent(typeof(CapsuleCollider))]
-	[RequireComponent(typeof(CharacterController))]
 	[RequireComponent(typeof(NetworkTransform))]
 	public class LocalPlayer : NetworkBehaviour
 	{
-		private static float DurationImmunity = 3f;
-		private static float DurationAttack = 3f;
-		private static float XZSpeedDefault = 2f;
-		private static float XZSpeedAttack = 5f;
-		private static float MouseSpeed = 1f;
+		[SerializeField] private Material _playerMaterial = null;
 
+        [Header("BehaviourConfig")]
+		[SerializeField] private Color _colorNormal = Color.white;
+		[SerializeField] private Color _colorImmunity = Color.black;
+		[SerializeField] private Color _colorAttack = Color.red;
+		[SerializeField] private float _durationImmunity = 3f;
+		[SerializeField] private float _durationAttack = 3f;
+		[SerializeField] private float _speedXZDefault = 2f;
+		[SerializeField] private float _speedXZAttack = 5f;
+		[SerializeField] private float _speedMouselook = 4f;
+
+		private bool _awakened = false;
 		private int _score = 0;
 		private DateTime _hurtUntil = DateTime.MinValue;
 		private DateTime _attackingUntil = DateTime.MinValue;
+		private string playerName = "";
+		private ScoreLabel _scoreLabel = null;
+
+		public bool IsAttacking()
+		{
+			return DateTime.Now <= _attackingUntil;
+		}
+		
+		public bool IsImmune()
+		{
+			return DateTime.Now <= _hurtUntil;
+		}
 
 		private void OnBeingAttacked()
 		{
-			_hurtUntil = DateTime.Now.AddSeconds(DurationImmunity);
+			_hurtUntil = DateTime.Now.AddSeconds(_durationImmunity);
+			SetMaterialColor(_colorImmunity);
 		}
-		
+
 		private void OnAttacking()
 		{
-			_attackingUntil = DateTime.Now.AddSeconds(DurationAttack);
+			_attackingUntil = DateTime.Now.AddSeconds(_durationAttack);
+			SetMaterialColor(_colorAttack);
+		}
+
+		private void SetMaterialColor(Color inc)
+		{
+			GetComponentInChildren<MeshRenderer>().material.SetColor("_Color", inc);
+		}
+		
+		private void BumpScore(bool reset = false)
+		{
+			_score++;
+			if (reset)
+				_score = 0;
+
+			_scoreLabel.SetScore(_score);
+		}
+
+		#region Behaviour
+		public override void OnStartLocalPlayer()
+		{
+			MouseController.Lock();
+			playerName = (string)connectionToClient.authenticationData;
+		}
+
+		public override void OnStopLocalPlayer()
+		{
+			MouseController.Unlock();
+		}
+
+		private void Awake()
+		{
+			GetComponentInChildren<MeshRenderer>().material = new Material(_playerMaterial);
+
+			_awakened = true;
+		}
+
+		private void Start()
+		{
+			if (!isLocalPlayer)
+				return;
+
+			_scoreLabel = FindObjectOfType<ScoreLabel>();
+			if (_scoreLabel == null)
+			{
+				Debug.LogWarning("ScoreLabel object is not found on the scene");
+				return;
+			}
+
+			BumpScore(true);
 		}
 
 		private void Update()
 		{
-			if (!isLocalPlayer)
+			if (!isLocalPlayer || !_awakened)
 				return;
 
-			bool attackStatus = DateTime.Now < _attackingUntil;
-			bool hurtStatus = DateTime.Now < _hurtUntil;
+			if (!IsAttacking() && Input.GetButton("Fire1"))
+				OnAttacking();
 
-			float xzspeed = attackStatus ? XZSpeedDefault : XZSpeedAttack;
-
-			float horizontalInput = Input.GetAxis("Horizontal");
+			/* Movement and camera */
+			float xzspeed = IsAttacking() ? _speedXZAttack : _speedXZDefault;
+			float horizontalInput = -Input.GetAxis("Horizontal");
 			float verticalInput = Input.GetAxis("Vertical");
-			transform.Translate(new Vector3(verticalInput, 0f, -horizontalInput) * xzspeed * Time.deltaTime);
-			transform.Rotate(0, Input.GetAxis("Mouse X") * MouseSpeed, 0);
+			transform.Translate(new Vector3(verticalInput, 0f, horizontalInput) * xzspeed * Time.deltaTime);
+			transform.Rotate(0, Input.GetAxis("Mouse X") * _speedMouselook, 0);
+
+			if (Input.GetButton("Cancel"))
+				MouseController.Toggle();
+
+			/* Refreshing colors */
+			if (IsAttacking())
+				SetMaterialColor(_colorAttack);
+			else if (IsImmune())
+				SetMaterialColor(_colorImmunity);
+			else
+				SetMaterialColor(_colorNormal);
 		}
 
-		private void FixedUpdate()
+		private void OnCollisionEnter(Collision collision)
 		{
-			if (!isLocalPlayer)
+			if (collision.gameObject.layer != LayerMask.NameToLayer("Player"))
 				return;
+				
+			if (collision.gameObject.GetComponent<LocalPlayer>().IsAttacking() && !this.IsImmune())
+			{
+				OnBeingAttacked();
+				return;
+			}
+			
+			if (!collision.gameObject.GetComponent<LocalPlayer>().IsImmune() && this.IsAttacking())
+			{
+				BumpScore();
+			}
 		}
+		#endregion
 	}
 }
